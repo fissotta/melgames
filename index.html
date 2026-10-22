@@ -75,6 +75,9 @@ main{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:v
 .sub{margin:.35em 0 0;color:#d6e6ee;font-weight:300;font-size:clamp(12px,1.75vh,16px);line-height:1.35;text-shadow:0 1px 10px rgba(0,0,0,.7);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .meta{margin-top:.5em;font-size:clamp(10px,1.45vh,12.5px);color:var(--muted);letter-spacing:.03em;display:flex;gap:10px;flex-wrap:wrap}
 .meta .pend{color:#ffc857}
+.meta .dev{color:var(--acc)}
+#mode{background:none;border:1px solid var(--line);color:inherit;font:inherit;border-radius:999px;padding:2px 10px;cursor:pointer}
+#mode:hover{border-color:rgba(255,255,255,.35)}
 .play{position:absolute;top:clamp(10px,1.6vh,16px);right:clamp(10px,1.4vw,16px);font-size:13px;font-weight:600;letter-spacing:.1em;padding:7px 14px;border-radius:999px;background:var(--acc);color:#071018;
   opacity:0;transform:translateY(-6px);transition:opacity .4s,transform .4s}
 .card:hover .play,.card:focus-visible .play{opacity:1;transform:none}
@@ -119,7 +122,7 @@ footer .live::before{content:"";width:6px;height:6px;border-radius:50%;backgroun
 
   <footer>
     <span>Microbial Ecophysiology Lab · Fundación Ciencia &amp; Vida · Parque Tecnológico Zañartu</span>
-    <span class="live" id="live">Versiones leídas en vivo desde cada juego</span>
+    <span><button id="mode" type="button"></button> &nbsp; <span class="live" id="live">Versiones leídas en vivo desde cada juego</span></span>
   </footer>
 </div>
 
@@ -134,14 +137,31 @@ const GAMES = [
     ver:[{ f:'', re:TITLE_RE }] },
   { id:'nicho', name:'NICHO', acc:'#7fe0b0', pos:'center 40%',
     sub:'Una corriente de adaptación — evolución bacteriana a temperatura, pH y salinidad en ambientes extremos.',
-    ver:[{ f:'', re:TITLE_RE }, { f:'js/game.js', re:/VERSION\s*[:=]\s*['"]v?([\d.]+)['"]/ }] },
+    ver:[{ f:'', re:TITLE_RE }, { f:'js/game.js', re:/VERSION\s*[:=]\s*['"]v?([\d.]+)['"]/ }],
+    mobile:'same' },   // un solo link: el juego se adapta solo al celular
   { id:'copahue-field-campaign', name:'COPAHUE FIELD CAMPAIGN', acc:'#43AFD3',
     sub:'Campaña de muestreo en el volcán Copahue: agua, sonda multiparámetro, filtración y metagenomas.',
-    ver:[{ f:'', re:TITLE_RE }] },
+    ver:[{ f:'', re:TITLE_RE }],
+    mobile:{ repo:'copahue-mobile', ver:[{ f:'', re:TITLE_RE }] } },   // versión aparte para celular/tablet
   { id:'acidgear', name:'ACID GEAR', acc:'#b9ff3c', pos:'center 30%',
     sub:'Xtreme Litho-Strike — peleas 2D entre los 17 taxa de Acidithiobacillia en 20 arenas extremófilas.',
     ver:[{ f:'', re:TITLE_RE }, { f:'js/main.js', re:/VERSION\s*:\s*['"]v?([\d.]+)['"]/ }] },
 ];
+
+/* --- ¿computador o celular/tablet? (se puede forzar con el botón del pie de página) --- */
+function detectMobile(){
+  const ua = navigator.userAgent || '';
+  if(/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|Opera Mini/i.test(ua)) return true;
+  if(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;          // iPad con iPadOS
+  return matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches; // solo pantalla táctil
+}
+function store0(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+const FORCED = store0('melg:mode');                    // 'mobile' | 'desktop' | null
+const MOBILE = FORCED ? FORCED === 'mobile' : detectMobile();
+GAMES.forEach(g=>{
+  g.t = (MOBILE && g.mobile && g.mobile !== 'same') ? { ...g.mobile, isMobile:true } : { repo:g.id, ver:g.ver };
+  g.dev = !MOBILE ? '' : g.mobile === 'same' ? '📱 se adapta al celular' : g.mobile ? '📱 versión celular' : '💻 hecho para computador';
+});
 
 const $games = document.getElementById('games');
 const rtf = new Intl.RelativeTimeFormat('es', { numeric:'auto' });
@@ -157,7 +177,7 @@ function store(k,v){ try{ if(v===undefined) return JSON.parse(localStorage.getIt
 
 GAMES.forEach(g=>{
   const a = document.createElement('a');
-  a.className = 'card'; a.href = BASE + g.id + '/';
+  a.className = 'card'; a.href = BASE + g.t.repo + '/';
   a.style.setProperty('--acc', g.acc);
   if(g.pos) a.style.setProperty('--pos', g.pos);
   a.innerHTML = `
@@ -168,7 +188,7 @@ GAMES.forEach(g=>{
         <span class="ver" title="Versión publicada"><span class="dot"></span><span class="v">v…</span></span>
         <span class="new">NUEVA</span></div>
       <p class="sub">${g.sub}</p>
-      <div class="meta"><span class="pub">buscando versión…</span><span class="pend"></span></div>
+      <div class="meta">${g.dev ? `<span class="dev">${g.dev}</span>` : ''}<span class="pub">buscando versión…</span><span class="pend"></span></div>
     </div>`;
   g.el = a; $games.appendChild(a);
 });
@@ -176,9 +196,9 @@ GAMES.forEach(g=>{
 /* --- versión publicada (lee el sitio en vivo) + último commit (API GitHub) --- */
 async function liveVersion(g){
   let version = null, deployed = null;
-  for(const src of g.ver){
+  for(const src of g.t.ver){
     try{
-      const r = await fetch(BASE + g.id + '/' + src.f + '?t=' + Date.now(), { cache:'no-store' });
+      const r = await fetch(BASE + g.t.repo + '/' + src.f + '?t=' + Date.now(), { cache:'no-store' });
       if(!r.ok) continue;
       const lm = r.headers.get('last-modified');
       if(lm){ const t = Date.parse(lm); if(!deployed || t > deployed) deployed = t; }
@@ -189,10 +209,10 @@ async function liveVersion(g){
   return { version, deployed };
 }
 async function lastCommit(g){
-  const key = 'melg:commit:' + g.id, c = store(key);
+  const key = 'melg:commit:' + g.t.repo, c = store(key);
   if(c && Date.now() - c.at < 4*60*1000) return c;
   try{
-    const r = await fetch(`https://api.github.com/repos/${OWNER}/${g.id}/commits?per_page=1`);
+    const r = await fetch(`https://api.github.com/repos/${OWNER}/${g.t.repo}/commits?per_page=1`);
     if(!r.ok) return c;
     const j = (await r.json())[0];
     const msg = j.commit.message || '';
@@ -205,7 +225,7 @@ async function refresh(g){
   const [live, com] = await Promise.all([liveVersion(g), lastCommit(g)]);
   const v = live.version || (com && com.version) || null;
   const chip = g.el.querySelector('.ver'), pub = g.el.querySelector('.pub'), pend = g.el.querySelector('.pend');
-  chip.querySelector('.v').textContent = v ? 'v' + v : 'v?';
+  chip.querySelector('.v').textContent = v ? 'v' + v : (g.t.isMobile ? 'móvil' : 'v?');
   // ¿hay un commit más nuevo que lo publicado? (GitHub Pages aún desplegando)
   let pending = false;
   if(com && com.version && live.version && com.version !== live.version) pending = true;
@@ -216,12 +236,19 @@ async function refresh(g){
   const when = live.deployed || (com && com.date);
   pub.textContent = when ? 'publicado ' + ago(when) : (v ? '' : 'sin datos de versión');
   // ¿cambió desde la última visita? (o mientras tienes la página abierta)
-  const seenKey = 'melg:seen:' + g.id;
+  const seenKey = 'melg:seen:' + g.t.repo;
   if(g.baseline === undefined) g.baseline = store(seenKey);
   if(v){ if(g.baseline && g.baseline !== v) g.el.querySelector('.new').classList.add('show'); if(!g.baseline) g.baseline = v; store(seenKey, v); }
 }
 function refreshAll(){ GAMES.forEach(refresh); document.getElementById('live').textContent = 'Versiones en vivo · revisado ' + new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}); }
 refreshAll(); setInterval(refreshAll, 60*1000);
+const $mode = document.getElementById('mode');
+$mode.textContent = (MOBILE ? '📱 Modo celular' : '💻 Modo computador') + (FORCED ? ' (elegido)' : '') + ' · cambiar';
+$mode.title = 'Cambia qué versión de los juegos se abre';
+$mode.addEventListener('click', e=>{ e.stopPropagation();
+  const next = MOBILE ? 'desktop' : 'mobile';
+  try{ if(next === (detectMobile() ? 'mobile' : 'desktop')) localStorage.removeItem('melg:mode'); else localStorage.setItem('melg:mode', next); }catch(_){}
+  location.reload(); });
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refreshAll(); });
 
 /* ================= FONDO: manchas + comunidades bacterianas ================= */
@@ -454,7 +481,7 @@ function setUI(){
 btn.addEventListener('click',e=>{ e.stopPropagation(); wantMusic = !Music.playing; if(wantMusic) Music.start(); else Music.stop(); setTimeout(setUI,60); });
 // Intenta sonar apenas carga; si el navegador lo bloquea, parte con el primer gesto (clic, toque o tecla).
 function tryStart(){ if(wantMusic && !Music.playing){ Music.start(); setTimeout(setUI,80); } }
-function gesture(e){ if(e.target.closest && e.target.closest('#music')) return; tryStart();
+function gesture(e){ if(e.target.closest && e.target.closest('#music, #mode')) return; tryStart();
   if(Music.playing) ['pointerdown','touchstart','keydown','click'].forEach(t=>removeEventListener(t,gesture,true)); }
 ['pointerdown','touchstart','keydown','click'].forEach(t=>addEventListener(t,gesture,true));
 tryStart(); setInterval(setUI,1000);
