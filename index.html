@@ -439,20 +439,25 @@ const Music = (()=>{
     master.gain.cancelScheduledValues(ctx.currentTime); master.gain.setTargetAtTime(.6,ctx.currentTime,1.2);
   }
   function stop(){ if(!ctx) return; on=false; master.gain.cancelScheduledValues(ctx.currentTime); master.gain.setTargetAtTime(0,ctx.currentTime,.4); setTimeout(()=>{ if(!on){ clearInterval(timer); ctx.suspend(); } },1500); }
-  return { start, stop, get on(){return on;} };
+  return { start, stop, get on(){return on;}, get playing(){ return on && ctx && ctx.state==='running'; } };
 })();
 
 const btn=document.getElementById('music'), lbl=btn.querySelector('.lbl');
-function setUI(){ btn.classList.toggle('on',Music.on); btn.setAttribute('aria-pressed',Music.on); lbl.textContent=Music.on?'Música':'Activar música'; btn.classList.toggle('hint',!Music.on&&store('melg:music')!=='off'); }
-btn.addEventListener('click',e=>{ e.stopPropagation(); if(Music.on){ Music.stop(); store('melg:music','off'); } else { Music.start(); store('melg:music','on'); } setUI(); });
-// el navegador exige un gesto: la música arranca con el primer clic o tecla (si no la apagaste antes)
-function firstGesture(e){
-  if(e.target.closest && e.target.closest('#music, .card')) return;
-  removeEventListener('pointerdown',firstGesture); removeEventListener('keydown',firstGesture);
-  if(store('melg:music')!=='off' && !Music.on){ Music.start(); setUI(); }
+// La música está activa por defecto. Se apaga solo si tocas el botón (durante esa visita).
+let wantMusic=true;
+function setUI(){
+  const playing=Music.playing, blocked=wantMusic&&!playing;
+  btn.classList.toggle('on',playing); btn.setAttribute('aria-pressed',wantMusic);
+  lbl.textContent = playing ? 'Música' : blocked ? 'Toca para escuchar' : 'Música apagada';
+  btn.classList.toggle('hint',blocked);
 }
-addEventListener('pointerdown',firstGesture); addEventListener('keydown',firstGesture);
-setUI();
+btn.addEventListener('click',e=>{ e.stopPropagation(); wantMusic = !Music.playing; if(wantMusic) Music.start(); else Music.stop(); setTimeout(setUI,60); });
+// Intenta sonar apenas carga; si el navegador lo bloquea, parte con el primer gesto (clic, toque o tecla).
+function tryStart(){ if(wantMusic && !Music.playing){ Music.start(); setTimeout(setUI,80); } }
+function gesture(e){ if(e.target.closest && e.target.closest('#music')) return; tryStart();
+  if(Music.playing) ['pointerdown','touchstart','keydown','click'].forEach(t=>removeEventListener(t,gesture,true)); }
+['pointerdown','touchstart','keydown','click'].forEach(t=>addEventListener(t,gesture,true));
+tryStart(); setInterval(setUI,1000);
 </script>
 </body>
 </html>
